@@ -3,6 +3,8 @@
 #  grades-watch.sh -- log in, fetch student profile, watch grades (Termux)
 #
 #  Flow:
+#    0. Verify --host against a pinned sha256 (refuses any other host, so
+#       credentials can never be sent to a sketchy server).
 #    1. Prompt for username + password (only if no saved credentials).
 #    2. POST  {host}/api/user/login        {"username","password"} -> token
 #    3. GET   {host}/api/students/self     (Bearer token) -> profile + id
@@ -36,6 +38,11 @@ INTERVAL=300                # seconds between polls (default: 5 minutes)
 ONCE=0                      # 1 = single check, then exit
 TEST_NOTIFY=0
 HOST=""                     # API host (--host)
+# Security pin: sha256 of the ONLY API host this script will log in to.
+# It exits before any prompt/request when --host doesn't match. To change
+# the API host on purpose, recompute and paste the new value:
+#   printf '%s' 'new.host.example.com' | sha256sum
+PINNED_HOST_SHA256='ab4f7977dae569c0a9b1badc90fecb44d59d7c7653e4fc878aa4cbff48accb6e'
 CHANNEL="NewGrade"         # Android notification channel
 UA_OPTS=(-A "okhttp/3.14.9")   # User-Agent matching the mobile app
 
@@ -68,10 +75,27 @@ Optional:
 
 Credentials are prompted interactively on first run and stored encrypted
 in ~/.grades-watch/. The token is auto-refreshed on HTTP 401.
+The host is pinned: sha256(--host) must match PINNED_HOST_SHA256 in the
+script, otherwise the script refuses to log in.
 EOF
 }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency '$1' (fix: pkg install $1)"; }
+
+verify_host() {  # exit unless sha256(--host) matches PINNED_HOST_SHA256
+  local bare got got_nl
+  bare=${HOST#http://}     # compare the bare hostname: scheme, case and
+  bare=${bare#https://}    # trailing slash don't affect the pin
+  bare=${bare%/}
+  got=$(printf '%s'    "$bare" | sha256sum); got=${got%% *}
+  got_nl=$(printf '%s\n' "$bare" | sha256sum); got_nl=${got_nl%% *}
+  # accept pins hashed with or without a trailing newline (printf vs echo)
+  if [ "$got" != "$PINNED_HOST_SHA256" ] && [ "$got_nl" != "$PINNED_HOST_SHA256" ]; then
+    die "wrong host -- it doesn't match the hashed value 
+  refusing to log in to '$HOST'
+  "
+  fi
+}
 
 #--------------------------- core functions ----------------------------
 
@@ -134,7 +158,7 @@ notify_entry() {  # $1 = course/file name, $2 = practical, $3 = theoretical
   [ -n "$t" ] || t=0
   sum=$(awk -v a="$p" -v b="$t" 'BEGIN { printf "%g", a + b }')
   if [ -n "$year" ]; then title="علامة جديدة $year"; else title="علامة جديدة"; fi
-  content="$subject $t نظري + $p عملي = $sum"   # swap labels here if needed
+  content="$subject $t نظري + $p عملي = $sum"   # $t = theoretical, $p = practical
   notify "$title" "$content"
 }
 
@@ -317,7 +341,7 @@ main() {
 
   # --- sample notification (verifies the Termux:API setup) ---
   if [ "$TEST_NOTIFY" -eq 1 ]; then
-    notify "علامة جديدة للسنة 3" "اتصالات رقمية و تشابهية 20 نظري + 25 عملي = 45"
+    notify "علامة جديدة للسنة 3" "اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45"
     exit 0
   fi
 
@@ -329,6 +353,7 @@ main() {
   need curl
   need jq
   need openssl
+  need sha256sum
 
   # --- build base URL ---
   HOST=${HOST,,}     # lowercase
@@ -337,6 +362,9 @@ main() {
     http://*|https://*) BASE_URL=$HOST ;;
     *)                  BASE_URL="https://$HOST" ;;
   esac
+
+  # --- host pin: nothing (prompt, request, credential) happens before this ---
+  verify_host
 
   # --- state directory + credential paths ---
   STATE_DIR="$HOME/.grades-watch"
