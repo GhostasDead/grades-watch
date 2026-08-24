@@ -13,13 +13,14 @@
 #       compare via CRC32 (cksum), notify per new/changed grade:
 #         title:    علامة جديدة للسنة 3
 #         content:  اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45
+#       Each check logs one single line (live-refreshed on a terminal).
 #
 #  Credentials (username, password, token) are stored AES-256-CBC encrypted
 #  via openssl; a random key file (chmod 600) lives next to them. The token
 #  is auto-refreshed (re-login) on HTTP 401.
 #
 #  One-time setup in Termux:
-#      pkg install curl jq openssl termux-api
+#      pkg install curl jq openssl-tool termux-api
 #      # plus the "Termux:API" companion app (same store as Termux).
 #      bash grades-watch.sh --test-notify
 #
@@ -44,7 +45,7 @@ HOST=""                     # API host (--host)
 #   printf '%s' 'new.host.example.com' | sha256sum
 PINNED_HOST_SHA256='ab4f7977dae569c0a9b1badc90fecb44d59d7c7653e4fc878aa4cbff48accb6e'
 CHANNEL="NewGrade"         # Android notification channel
-UA_OPTS=(-A "okhttp/3.14.9")   # User-Agent matching the mobile app
+UA_OPTS=(-A "okhttp/3.14.9")
 
 #------------------------------ globals --------------------------------
 HTTP_CODE=""
@@ -55,10 +56,27 @@ TOKEN=""
 STUDENT_ID=""
 BASE_URL=""
 GRADES_URL=""
+STATUS_ACTIVE=0             # 1 while a live \r status line is on screen (tty)
 
 #------------------------------ helpers ---------------------------------
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
-log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log() {  # full log line; terminates a live status line first
+  if [ "$STATUS_ACTIVE" -eq 1 ]; then printf '\n' >&2; STATUS_ACTIVE=0; fi
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
+}
+
+log_status() {  # periodic check status: exactly ONE line, written the moment
+                # the check finishes (a single write -- never split, never held
+                # back in a buffer waiting for the next check)
+  local text=$1
+  text=${text//$'\n'/ }                # a status never spans multiple lines
+  if [ -t 2 ]; then                  # terminal: refresh one single line
+    printf '\r\033[K[%s] check #%d: %s' "$(date '+%H:%M:%S')" "$CHECK_N" "$text" >&2
+    STATUS_ACTIVE=1
+  else                               # file/pipe: one complete line per check
+    printf '[%s] check #%d: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$CHECK_N" "$text" >&2
+  fi
+}
 
 usage() {
 cat <<'EOF'
@@ -80,7 +98,7 @@ script, otherwise the script refuses to log in.
 EOF
 }
 
-need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency '$1' (fix: pkg install $1)"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency '$1' (fix: pkg install ${2:-$1})"; }
 
 verify_host() {  # exit unless sha256(--host) matches PINNED_HOST_SHA256
   local bare got got_nl
@@ -91,9 +109,8 @@ verify_host() {  # exit unless sha256(--host) matches PINNED_HOST_SHA256
   got_nl=$(printf '%s\n' "$bare" | sha256sum); got_nl=${got_nl%% *}
   # accept pins hashed with or without a trailing newline (printf vs echo)
   if [ "$got" != "$PINNED_HOST_SHA256" ] && [ "$got_nl" != "$PINNED_HOST_SHA256" ]; then
-    die "wrong host -- it doesn't match the hashed value 
-  refusing to log in to '$HOST'
-  "
+    die "wrong host -- it doesn't match the hashed value
+refusing to log in to '$HOST'"
   fi
 }
 
@@ -352,8 +369,8 @@ main() {
 
   need curl
   need jq
-  need openssl
-  need sha256sum
+  need openssl openssl-tool    # the openssl CLI ships in openssl-tool
+  need sha256sum coreutils
 
   # --- build base URL ---
   HOST=${HOST,,}     # lowercase
@@ -384,7 +401,11 @@ main() {
   if command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock 2>/dev/null || true
   fi
-  cleanup() { command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock 2>/dev/null; }
+  cleanup() {
+    if [ "$STATUS_ACTIVE" -eq 1 ]; then printf '\n' >&2; STATUS_ACTIVE=0; fi
+    command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock 2>/dev/null
+    return 0
+  }
   trap cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -417,7 +438,7 @@ main() {
   while :; do
     CHECK_N=$((CHECK_N + 1))
     check_once
-    log "check #$CHECK_N: $RESULT"
+    log_status "$RESULT"
     [ "$ONCE" -eq 1 ] && break
     sleep "$INTERVAL"
   done
