@@ -48,16 +48,19 @@ locks).
 Open Termux and run:
 
 ```bash
-pkg install git curl jq openssl-tool termux-api
+pkg install -y git curl jq openssl-tool termux-api
 ```
 
+<details>
+<summary>Packages Purpose</summary>
 | Package | What it's for |
 |---|---|
 | `git` | clones this repo |
 | `curl` | talks to the API |
 | `jq` | parses the JSON |
-| `openssl-tool` | encrypts your saved credentials (note: `openssl` alone is just libraries) |
+| `openssl-tool` | encrypts your saved credentials |
 | `termux-api` | notifications + wake lock |
+</details>
 
 ### 3 — Clone the repo
 
@@ -76,7 +79,7 @@ chmod +x grades-watch.sh
 ./grades-watch.sh --host uni-api.example.com
 ```
 
-`--host` is the **only required parameter** — everything else has a sane
+[`--host` is the **only required parameter**](#-finding-your---host) — everything else has a sane
 default. On first run the script asks for your username and password, saves
 them **encrypted** in `~/.grades-watch/`, and never asks again.
 
