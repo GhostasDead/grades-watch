@@ -52,7 +52,8 @@ pkg install -y git curl jq openssl-tool termux-api
 ```
 
 <details>
-<summary>Packages Purpose</summary>
+<summary>Packages purpose</summary>
+
 | Package | What it's for |
 |---|---|
 | `git` | clones this repo |
@@ -60,6 +61,7 @@ pkg install -y git curl jq openssl-tool termux-api
 | `jq` | parses the JSON |
 | `openssl-tool` | encrypts your saved credentials |
 | `termux-api` | notifications + wake lock |
+
 </details>
 
 ### 3 — Clone the repo
