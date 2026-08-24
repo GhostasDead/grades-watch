@@ -15,6 +15,13 @@
 #         content:  اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45
 #       Each check logs one single line (live-refreshed on a terminal).
 #
+#  Startup prints a UNI banner. Log entries are separated by blank lines
+#  and color-coded: keys + datetimes dark gray, values light gray, errors
+#  red, network/no-response errors yellow; the check line shows its
+#  counter in the state color (magenta / red / yellow) and the hint text
+#  in light blue. Colors are only used on a terminal (log files stay
+#  free of escape codes).
+#
 #  Credentials (username, password, token) are stored AES-256-CBC encrypted
 #  via openssl; a random key file (chmod 600) lives next to them. The token
 #  is auto-refreshed (re-login) on HTTP 401.
@@ -57,25 +64,101 @@ STUDENT_ID=""
 BASE_URL=""
 GRADES_URL=""
 STATUS_ACTIVE=0             # 1 while a live \r status line is on screen (tty)
+LAST_BLANK=0                # 1 right after a blank separator line
+
+# ANSI colors -- only when stderr is a terminal (plain text in log files)
+if [ -t 2 ]; then
+  C_DGRAY=$'\033[90m'   # keys + datetimes
+  C_LGRAY=$'\033[37m'   # values
+  C_RED=$'\033[31m'     # errors
+  C_YELLOW=$'\033[33m'  # network / no-response errors
+  C_MAGENTA=$'\033[35m' # periodic check status
+  C_LBLUE=$'\033[94m'   # hint
+  C_OFF=$'\033[0m'
+else
+  C_DGRAY='' C_LGRAY='' C_RED='' C_YELLOW='' C_MAGENTA='' C_LBLUE='' C_OFF=''
+fi
 
 #------------------------------ helpers ---------------------------------
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
-log() {  # full log line; terminates a live status line first
-  if [ "$STATUS_ACTIVE" -eq 1 ]; then printf '\n' >&2; STATUS_ACTIVE=0; fi
-  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
+
+_blank() {  # one blank line between log entries -- never two in a row
+  if [ "$LAST_BLANK" -eq 0 ]; then printf '\n' >&2; LAST_BLANK=1; fi
 }
 
-log_status() {  # periodic check status: exactly ONE line, written the moment
-                # the check finishes (a single write -- never split, never held
-                # back in a buffer waiting for the next check)
-  local text=$1
+die() {
+  _blank
+  printf '%serror: %s%s\n' "$C_RED" "$*" "$C_OFF" >&2
+  exit 1
+}
+
+log() {  # $@ = message; dark gray datetime, light gray text
+  if [ "$STATUS_ACTIVE" -eq 1 ]; then
+    printf '\n' >&2; STATUS_ACTIVE=0; LAST_BLANK=0
+  else
+    _blank
+  fi
+  printf '%s[%s]%s %s%s%s\n' "$C_DGRAY" "$(date '+%Y-%m-%d %H:%M:%S')" \
+    "$C_OFF" "$C_LGRAY" "$*" "$C_OFF" >&2
+  LAST_BLANK=0
+}
+
+log_status() {  # the periodic check status: ONE atomic line per check,
+                # written the moment the check finishes; the "#N" counter
+                # carries the state color (magenta / red / yellow), the
+                # hint text is light blue
+  local text=$1 color=$C_MAGENTA
   text=${text//$'\n'/ }                # a status never spans multiple lines
+  case $text in
+    "error: no response"*|"error: network"*) color=$C_YELLOW ;;
+    "error:"*)                              color=$C_RED ;;
+  esac
   if [ -t 2 ]; then                  # terminal: refresh one single line
-    printf '\r\033[K[%s] check #%d: %s' "$(date '+%H:%M:%S')" "$CHECK_N" "$text" >&2
+    printf '\r\033[K%s[%s]%s check %s#%d%s:%s %s%s' "$C_DGRAY" "$(date '+%H:%M:%S')" \
+      "$C_OFF" "$color" "$CHECK_N" "$C_OFF" "$C_LBLUE" "$text" "$C_OFF" >&2
     STATUS_ACTIVE=1
   else                               # file/pipe: one complete line per check
-    printf '[%s] check #%d: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$CHECK_N" "$text" >&2
+    _blank
+    printf '%s[%s]%s check %s#%d%s:%s %s%s\n' "$C_DGRAY" "$(date '+%Y-%m-%d %H:%M:%S')" \
+      "$C_OFF" "$color" "$CHECK_N" "$C_OFF" "$C_LBLUE" "$text" "$C_OFF" >&2
+    LAST_BLANK=0
   fi
+}
+
+print_kv() {  # $1 = "key: value" line -> dark gray key, light gray value
+  local k=${1%%:*} v=${1#*: }
+  if [ "$v" = "$1" ]; then           # not a "key: value" shape -> as-is
+    printf '%s%s%s\n' "$C_LGRAY" "$1" "$C_OFF" >&2
+  else
+    printf '%s%s:%s %s%s%s\n' "$C_DGRAY" "$k" "$C_OFF" "$C_LGRAY" "$v" "$C_OFF" >&2
+  fi
+}
+
+print_banner() {  # UNI banner: dark gray double-edge frame, light bold
+                  # block letters, plain separator + centered title
+  local esc=$'\033' sedexpr
+  if [ -t 2 ]; then
+    sedexpr="s/%B/${esc}[90m/g;s/%M/${esc}[1;37m/g;s/%C/${esc}[1;0m/g;s/%R/${esc}[0m/g"
+  else
+    sedexpr='s/%[BMCR]//g'
+  fi
+  sed "$sedexpr" >&2 <<'BANNER'
+
+%B╔═══════════════════════════════════════════════════════════╗%R
+%B║%R                                                           %B║%R
+%B║%R%M                 ██╗   ██╗ ███╗   ██╗ ██╗                  %R%B║%R
+%B║%R%M                 ██║   ██║ ████╗  ██║ ██║                  %R%B║%R
+%B║%R%M                 ██║   ██║ ██╔██╗ ██║ ██║                  %R%B║%R
+%B║%R%M                 ██║   ██║ ██║╚██╗██║ ██║                  %R%B║%R
+%B║%R%M                 ╚██████╔╝ ██║ ╚████║ ██║                  %R%B║%R
+%B║%R%M                  ╚═════╝  ╚═╝  ╚═══╝ ╚═╝                  %R%B║%R
+%B║%R                                                           %B║%R
+%B║%R%C ═════════════════════════════════════════════════════════ %R%B║%R
+%B║%R%C                 University Grades Watcher                 %R%B║%R
+%B║%R%C ═════════════════════════════════════════════════════════ %R%B║%R
+%B╚═══════════════════════════════════════════════════════════╝%R
+BANNER
+  printf '\n' >&2
+  LAST_BLANK=1
 }
 
 usage() {
@@ -213,7 +296,7 @@ check_once() {
 
   # fast path: CRC32 of the response unchanged since last successful poll
   if [ -f "$CKSUM_FILE" ] && [ "$(cat "$CKSUM_FILE")" = "$new_ck" ]; then
-    RESULT="no change"
+    RESULT="You'll get a notification once new marks get submitted"
     rm -f "$body"; return 0
   fi
 
@@ -319,6 +402,7 @@ fetch_student_self() {  # GET /api/students/self; logs profile; sets STUDENT_ID
     rm -f "$body"; return 1
   fi
   STUDENT_ID=$(jq -r '.id // empty' "$body" 2>/dev/null) || { rm -f "$body"; return 1; }
+  _blank
   jq -r '
     "firstName: \(.firstName // "")",
     "lastName: \(.lastName // "")",
@@ -333,7 +417,9 @@ fetch_student_self() {  # GET /api/students/self; logs profile; sets STUDENT_ID
     "email: \(.email // "")",
     "faculty.arabicName: \(.faculty.arabicName // "")",
     "faculty.englishName: \(.faculty.englishName // "")"
-  ' "$body" >&2
+  ' "$body" | while IFS= read -r kv_line; do print_kv "$kv_line"; done
+  printf '\n' >&2
+  LAST_BLANK=1
   rm -f "$body"
   [ -n "$STUDENT_ID" ] || return 1
   return 0
@@ -342,6 +428,8 @@ fetch_student_self() {  # GET /api/students/self; logs profile; sets STUDENT_ID
 #-------------------------------- main ----------------------------------
 
 main() {
+  print_banner
+
   # --- parse arguments ---
   while [ $# -gt 0 ]; do
     case $1 in
@@ -371,6 +459,7 @@ main() {
   need jq
   need openssl openssl-tool    # the openssl CLI ships in openssl-tool
   need sha256sum coreutils
+  need sed
 
   # --- build base URL ---
   HOST=${HOST,,}     # lowercase
@@ -413,10 +502,11 @@ main() {
   # --- load saved credentials or prompt ---
   if ! load_creds; then
     printf 'No saved credentials for %s. Please log in.\n' "$BASE_URL" >&2
+    LAST_BLANK=0
     read -r -p "Username: " USERNAME
     read -r -s -p "Password: " PASSWORD; echo
     if ! do_login; then
-      die "login failed (check username, password, and host)"
+      die "login failed (check username, password)"
     fi
     save_creds
     log "credentials saved (encrypted): $CREDS_FILE"
@@ -433,7 +523,6 @@ main() {
   CKSUM_FILE="$STATE_DIR/$STATE_KEY.cksum"
   ENTRIES_FILE="$STATE_DIR/$STATE_KEY.entries"
 
-  log "watching $GRADES_URL every ${INTERVAL}s (state: $STATE_DIR)"
   CHECK_N=0
   while :; do
     CHECK_N=$((CHECK_N + 1))
