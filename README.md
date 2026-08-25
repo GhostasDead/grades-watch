@@ -26,7 +26,6 @@
 
 ---
 
-
 ## 📲 Installation
 
 ### 1 — Get the apps from F-Droid
@@ -74,8 +73,6 @@ chmod +x grades-watch.sh
 ./grades-watch.sh --test-notify   # verifies the notification setup
 ```
 
----
-
 
 ## 🚀 Usage
 
@@ -120,9 +117,6 @@ Reset everything (forget credentials + remembered grades):
 rm -rf ~/.grades-watch
 ```
 
----
-
-
 ## 🔎 Finding your `--host`
 
 1. On a PC, go to your uni's website and log in.
@@ -132,7 +126,6 @@ rm -rf ~/.grades-watch
 5. Switch to your phone, type that domain next to the `--host` parameter in Termux.
 
 ---
-
 
 ## ✨ Features
 
@@ -149,9 +142,6 @@ rm -rf ~/.grades-watch
 - 🌙 Survives screen-off via wake lock
 - 🎨 Colored, single-line live status + a banner, because terminal apps
   deserve love too
-
----
-
 
 ## 🤝 Credits
 
@@ -170,6 +160,8 @@ historic moments of confusion (all mine 👇):
   that point. Translation: show the theoretical mark before the practical one.
 <details>
 <summary>Endless AI Thonk</summary>
+
+```
 4. Take token (from response 1) and id (from response 2) to watch grades like before.
 
 5. Change notification content format:
@@ -261,6 +253,8 @@ OR — and this is the simplest explanation — maybe the user just wrote the la
 I'll match exactly. Move on.
 
 6. Omit "wake lock acquired" logging.
+```
+
 </details>
   
 - I demanded dependency checks that grep `pkg list-all` because "openssl is
@@ -276,16 +270,10 @@ I'll match exactly. Move on.
 
 Despite all that, it shipped. Use it well.
 
----
-
-
 ## 📄 License
 
 This project is licensed under the **GNU General Public License v3.0** — see
 [LICENSE](LICENSE).
-
----
-
 
 ## ⚠️ Disclaimer
 
