@@ -82,13 +82,12 @@ chmod +x grades-watch.sh
 ```
 
 [`--host` is the **only required parameter**](#-finding-your---host) — everything else has a sane
-default. On first run the script asks for your username and password, saves
+default.
+
+On first run, the script asks for your username and password, saves
 them **encrypted** in `~/.grades-watch/`, and never asks again.
 
-**You can close the Termux app and turn the screen off while it's checking** —
-the script holds a wake lock, so polling continues in the background and
-notifications still pop up. (If your Android build is aggressive about killing
-apps, also tap *Acquire wakelock* in the Termux notification.)
+**You can close the Termux app while it's checking.**
 
 While it runs, one line live-refreshes on screen:
 
@@ -138,7 +137,7 @@ rm -rf ~/.grades-watch
 - 🛡️ **Host pinning** — the script refuses to log in to any host that doesn't
   match a SHA-256 hash baked into it, so a typo (or a sketchy mirror) can
   never leak your credentials
-- 👤 **Knows who you are** — prints your student profile on startup
+- 👤 **KNOWS WHO YOU ARE** — prints your student profile on startup
 - 🗜️ **gzip-aware** requests, timeouts, and a magic-byte decompression fallback
 - ⚡ **CRC32 fast path** + per-course diffing — only *actual* mark changes
   trigger a notification, not API noise
