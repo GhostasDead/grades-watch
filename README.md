@@ -97,6 +97,7 @@ While it runs, one line live-refreshes on screen:
 …and when a mark lands, you get:
 
 > **علامة جديدة للسنة 3**
+
 > اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45
 
 <details>
@@ -145,8 +146,8 @@ rm -rf ~/.grades-watch
 
 ## 🤝 Credits
 
-This was a two-brain build: **one human** (the idea, reverse-engineering the
-university app's API, and every design call — the notification wording, the
+This was a two-brain build: **one human** (the idea, intercepting the
+API, and every design call — the notification wording, the
 colors, the banner, the host pin) and **one AI** (the bash itself, a mock-server
 test rig, 20+ automated tests, and the patience of a saint while decoding the
 requirements below).
