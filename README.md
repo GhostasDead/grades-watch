@@ -98,7 +98,7 @@ While it runs, one line live-refreshes on screen:
 
 > **علامة جديدة للسنة 3**
 
-> اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45
+> اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45 راسب 😔
 
 <details>
 <summary>Optional flags</summary>
@@ -135,9 +135,9 @@ rm -rf ~/.grades-watch
 - 🛡️ **Host pinning** — the script refuses to log in to any host that doesn't
   match a SHA-256 hash baked into it, so a typo (or a sketchy mirror) can
   never leak your credentials
-- 👤 **KNOWS WHO YOU ARE** — prints your student profile on startup
+- 👤 **KNOWS WHAT YOU ARE** — prints your student profile on startup
 - 🗜️ **gzip-aware** requests, timeouts, and a magic-byte decompression fallback
-- ⚡ **CRC32 fast path** + per-course diffing — only *actual* mark changes
+- ⚡ **CRC32 fast path** + per-grade ID diffing — only *actual* new marks
   trigger a notification, not API noise
 - 🔔 Notifications arrive on a dedicated channel, with icon and sound
 - 🌙 Survives screen-off via wake lock

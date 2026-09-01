@@ -12,7 +12,11 @@
 #    4. GET   {host}/Api/Grades?StudentId={id}  (Bearer token) every 5 min,
 #       compare via CRC32 (cksum), notify per new/changed grade:
 #         title:    علامة جديدة للسنة 3
-#         content:  اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45
+#         content:  اتصالات رقمية و تشابهية: 25 نظري + 20 عملي = 45 ناجح 🥳
+#       Only the first (latest) grades record matters; it is keyed by its
+#       id, so a re-submitted record notifies even with identical marks
+#       (absent twice: 0+0 both times). gradeStatus 0/1/4 appends
+#       ناجح 🥳 / راسب 😔 / غائب 🫪 after the total.
 #       Each check logs one single line (live-refreshed on a terminal).
 #
 #  Startup prints a UNI banner. Log entries are separated by blank lines
@@ -52,7 +56,7 @@ HOST=""                     # API host (--host)
 #   printf '%s' 'new.host.example.com' | sha256sum
 PINNED_HOST_SHA256='ab4f7977dae569c0a9b1badc90fecb44d59d7c7653e4fc878aa4cbff48accb6e'
 CHANNEL="NewGrade"         # Android notification channel
-UA_OPTS=(-A "okhttp/3.14.9")
+UA_OPTS=(-A "okhttp/3.14.9")   # User-Agent matching the mobile app
 
 #------------------------------ globals --------------------------------
 HTTP_CODE=""
@@ -142,7 +146,6 @@ print_banner() {  # UNI banner: dark gray double-edge frame, light bold
     sedexpr='s/%[BMCR]//g'
   fi
   sed "$sedexpr" >&2 <<'BANNER'
-
 %B╔═══════════════════════════════════════════════════════════╗%R
 %B║%R                                                           %B║%R
 %B║%R%M                 ██╗   ██╗ ███╗   ██╗ ██╗                  %R%B║%R
@@ -238,18 +241,20 @@ curl_get() {
   maybe_gunzip "$2"
 }
 
-parse_entries() {  # $1 = JSON file; stdout: "name \x01 practical \x01 theoretical" lines
+parse_entries() {  # $1 = JSON file; stdout: "name \x01 id \x01 practical \x01 theoretical \x01 status" lines
   jq -r '
     .[] |
     [ ((.file.name // "") | gsub("\\s+"; " ")),
+      ((.grades[0].id             // "") | tostring),
       ((.grades[0].practicalMark   // "") | tostring),
-      ((.grades[0].theoreticalMark // "") | tostring) ] |
+      ((.grades[0].theoreticalMark // "") | tostring),
+      ((.grades[0].gradeStatus     // "") | tostring) ] |
     join("\u0001")
   ' "$1"
 }
 
-notify_entry() {  # $1 = course/file name, $2 = practical, $3 = theoretical
-  local name=$1 p=$2 t=$3 subject year sum title content
+notify_entry() {  # $1 = course/file name, $2 = practical, $3 = theoretical, $4 = gradeStatus
+  local name=$1 p=$2 t=$3 gs=$4 subject year sum title content status
   # name layout: "faculty - subject - exam session - year" (split on " - ")
   subject=$(printf '%s' "$name" | awk -F' - ' 'NF>=2 {print $2; exit}')
   year=$(printf '%s'    "$name" | awk -F' - ' 'NF>=4 {print $4; exit}')
@@ -257,8 +262,15 @@ notify_entry() {  # $1 = course/file name, $2 = practical, $3 = theoretical
   [ -n "$p" ] || p=0
   [ -n "$t" ] || t=0
   sum=$(awk -v a="$p" -v b="$t" 'BEGIN { printf "%g", a + b }')
+  case $gs in
+    0) status="ناجح 🥳" ;;
+    1) status="راسب 😔" ;;
+    4) status="غائب 🫪" ;;
+    *) status="" ;;
+  esac
   if [ -n "$year" ]; then title="علامة جديدة $year"; else title="علامة جديدة"; fi
-  content="$subject $t نظري + $p عملي = $sum"   # $t = theoretical, $p = practical
+  content="$subject: $t نظري + $p عملي = $sum"   # $t = theoretical, $p = practical
+  if [ -n "$status" ]; then content="$content $status"; fi
   notify "$title" "$content"
 }
 
@@ -314,14 +326,14 @@ check_once() {
     rm -f "$body"; return 0
   fi
 
-  # notify for every entry that is new or whose marks changed
+  # notify for every entry that is new or whose first-record id/marks/status changed
   notified=0
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     grep -qxF -- "$line" "$ENTRIES_FILE" && continue
-    IFS=$'\x01' read -r name p t <<< "$line"
-    [ -n "$p" ] || [ -n "$t" ] || continue    # marks not posted yet
-    notify_entry "$name" "$p" "$t"
+    IFS=$'\x01' read -r name gid p t gs <<< "$line"
+    [ -n "$p" ] || [ -n "$t" ] || [ -n "$gs" ] || continue   # grade not submitted yet
+    notify_entry "$name" "$p" "$t" "$gs"
     notified=$((notified + 1))
   done <<< "$entries"
 
@@ -446,7 +458,7 @@ main() {
 
   # --- sample notification (verifies the Termux:API setup) ---
   if [ "$TEST_NOTIFY" -eq 1 ]; then
-    notify "علامة جديدة للسنة 3" "اتصالات رقمية و تشابهية 25 نظري + 20 عملي = 45"
+    notify "علامة جديدة للسنة 3" "اتصالات رقمية و تشابهية: 25 نظري + 20 عملي = 45 ناجح 🥳"
     exit 0
   fi
 
@@ -522,6 +534,13 @@ main() {
   STATE_KEY=$(printf '%s' "$GRADES_URL" | cksum | cut -d' ' -f1)
   CKSUM_FILE="$STATE_DIR/$STATE_KEY.cksum"
   ENTRIES_FILE="$STATE_DIR/$STATE_KEY.entries"
+
+  # state from an older script version (entries without id/gradeStatus):
+  # drop it and re-baseline silently instead of notifying for every grade
+  if [ -s "$ENTRIES_FILE" ] \
+     && [ "$(awk -F$'\x01' 'NR==1 {print NF}' "$ENTRIES_FILE" 2>/dev/null)" != "5" ]; then
+    rm -f "$ENTRIES_FILE" "$CKSUM_FILE"
+  fi
 
   CHECK_N=0
   while :; do
