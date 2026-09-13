@@ -13,10 +13,11 @@
 #       compare via CRC32 (cksum), notify per new/changed grade:
 #         title:    علامة جديدة للسنة 3
 #         content:  اتصالات رقمية و تشابهية: 25 نظري + 20 عملي = 45 ناجح 🥳
-#       Only the first (latest) grades record matters; it is keyed by its
-#       id, so a re-submitted record notifies even with identical marks
-#       (absent twice: 0+0 both times). gradeStatus 0/1/4 appends
-#       ناجح 🥳 / راسب 😔 / غائب 🫪 after the total.
+#       Only the newest grades record matters -- the one with the max
+#       "date", wherever the API lists it (it isn't always first). That
+#       date keys the comparison, so a re-submitted record notifies even
+#       with identical marks (absent twice: 0+0 both times). gradeStatus
+#       0/1/4 appends ناجح 🥳 / راسب 😔 / غائب 🫪 after the total.
 #       Each check logs one single line (live-refreshed on a terminal).
 #
 #  Startup prints a UNI banner. Log entries are separated by blank lines
@@ -241,14 +242,18 @@ curl_get() {
   maybe_gunzip "$2"
 }
 
-parse_entries() {  # $1 = JSON file; stdout: "name \x01 id \x01 practical \x01 theoretical \x01 status" lines
+parse_entries() {  # $1 = JSON file; stdout: "name \x01 date \x01 practical \x01 theoretical \x01 status" lines
+  # the record with the max "date" is the newest one -- the API doesn't
+  # always list it first, so grades[0] can't be trusted. ISO 8601 stamps
+  # (2026-08-03T21:15:46.5390039) compare correctly as plain strings
   jq -r '
     .[] |
+    ((.grades // []) | max_by(.date)) as $g |
     [ ((.file.name // "") | gsub("\\s+"; " ")),
-      ((.grades[0].id             // "") | tostring),
-      ((.grades[0].practicalMark   // "") | tostring),
-      ((.grades[0].theoreticalMark // "") | tostring),
-      ((.grades[0].gradeStatus     // "") | tostring) ] |
+      (($g.date             // "") | tostring),
+      (($g.practicalMark   // "") | tostring),
+      (($g.theoreticalMark // "") | tostring),
+      (($g.gradeStatus     // "") | tostring) ] |
     join("\u0001")
   ' "$1"
 }
@@ -326,12 +331,12 @@ check_once() {
     rm -f "$body"; return 0
   fi
 
-  # notify for every entry that is new or whose first-record id/marks/status changed
+  # notify for every entry that is new or whose newest-record date/marks/status changed
   notified=0
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     grep -qxF -- "$line" "$ENTRIES_FILE" && continue
-    IFS=$'\x01' read -r name gid p t gs <<< "$line"
+    IFS=$'\x01' read -r name gdate p t gs <<< "$line"
     [ -n "$p" ] || [ -n "$t" ] || [ -n "$gs" ] || continue   # grade not submitted yet
     notify_entry "$name" "$p" "$t" "$gs"
     notified=$((notified + 1))
@@ -535,11 +540,18 @@ main() {
   CKSUM_FILE="$STATE_DIR/$STATE_KEY.cksum"
   ENTRIES_FILE="$STATE_DIR/$STATE_KEY.entries"
 
-  # state from an older script version (entries without id/gradeStatus):
-  # drop it and re-baseline silently instead of notifying for every grade
-  if [ -s "$ENTRIES_FILE" ] \
-     && [ "$(awk -F$'\x01' 'NR==1 {print NF}' "$ENTRIES_FILE" 2>/dev/null)" != "5" ]; then
-    rm -f "$ENTRIES_FILE" "$CKSUM_FILE"
+  # state from an older script version (3-field lines, or entries keyed by
+  # the record id instead of the newest record's date): drop it and
+  # re-baseline silently instead of notifying for every grade
+  if [ -s "$ENTRIES_FILE" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      IFS=$'\x01' read -r _ k2 _ <<< "$line"
+      case $k2 in
+        ""|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) ;;  # date key ("" = nothing submitted yet)
+        *) rm -f "$ENTRIES_FILE" "$CKSUM_FILE"; break ;;
+      esac
+    done < "$ENTRIES_FILE"
   fi
 
   CHECK_N=0
