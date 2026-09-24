@@ -17,7 +17,8 @@
 #       "date", wherever the API lists it (it isn't always first). That
 #       date keys the comparison, so a re-submitted record notifies even
 #       with identical marks (absent twice: 0+0 both times). gradeStatus
-#       0/1/4 appends ناجح 🥳 / راسب 😔 / غائب 🫪 after the total.
+#       0-5 appends ناجح 🥳 / راسب 😔 / محروم 🤐 / محجوب 😶‍🌫️ / غائب 🫪 / غير محدد 🫥 
+#       after the total.
 #       Each check logs one single line (live-refreshed on a terminal).
 #
 #  Startup prints a UNI banner. Log entries are separated by blank lines
@@ -270,7 +271,10 @@ notify_entry() {  # $1 = course/file name, $2 = practical, $3 = theoretical, $4 
   case $gs in
     0) status="ناجح 🥳" ;;
     1) status="راسب 😔" ;;
+    2) status="محروم 🤐" ;;
+    3) status="محجوب 😶‍🌫️" ;;
     4) status="غائب 🫪" ;;
+    5) status="غير محدد 🫥" ;;
     *) status="" ;;
   esac
   if [ -n "$year" ]; then title="علامة جديدة $year"; else title="علامة جديدة"; fi

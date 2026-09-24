@@ -139,7 +139,7 @@ rm -rf ~/.grades-watch
 - 🗜️ **gzip-aware** requests, timeouts, and a magic-byte decompression fallback
 - ⚡ **CRC32 fast path** + per-record `date` diffing — only *actual* new marks
   trigger a notification, not API noise
-- 🧾 **Retake- and absence-aware** — only the newest grade record iswatched, picked by its date and keyed by it: a re-submitted record notifies even when the marks areidentical (absent twice? you'll hear about it)
+- 🧾 **Grade Status-Aware** — ناجح  / راسب  / محروم  / محجوب  / غائب  / غير محدد
 - 🔔 Notifications arrive on a dedicated channel, with icon and sound
 - 🌙 Survives screen-off via wake lock
 - 🎨 Colored, single-line live status + a banner, because terminal apps
